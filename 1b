@@ -1,0 +1,79 @@
+with asd as (
+    select customer_name, order_id, order_date,
+    ROW_NUMBER() over (partition by customers.customer_id order by order_date desc) 
+    as poradie
+    from orders join customers on customers.customer_id=orders.customer_id
+)
+select customer_name, order_id, order_date,poradie from asd 
+where poradie<=2
+
+with asd as (
+    select region,customers.customer_name, sum(profit) as total_profit,
+    rank() over (partition by region order by sum(profit) desc ) as zaklad
+    from orders join customers on customers.customer_id=orders.customer_id
+    group by region,customers.customer_name
+),
+qwe as (
+    select region,customer_name,total_profit,zaklad,
+    dense_rank() over (partition by region order by total_profit desc ) as pokr
+    from asd
+)
+select region,customer_name,total_profit,zaklad, pokr from qwe
+order by region, total_profit desc
+
+with asd as (
+    select customer_name, sum(sales) as total_sales, 
+    ntile(4) over (order by sum(sales) desc ) as quartal
+    from orders join customers on customers.customer_id=orders.customer_id 
+    group by customer_name
+)
+select customer_name,total_sales, quartal from asd
+
+with asd as (
+    select sum(sales) as celkom , date_trunc('month', order_date) as mesiac
+    from orders 
+    group by date_trunc('month', order_date)
+),
+qwe as (
+    select celkom , mesiac,
+    lag(celkom, 1) over (order by mesiac) as pred,
+    lead(celkom, 1) over (order by mesiac) as potom
+    from asd 
+)
+select mesiac, celkom, pred, potom from qwe
+order by mesiac desc  
+
+with asd as (
+    select 
+        p.category,
+        p.product_name,
+        sum(o.sales) as product_sales
+    from orders o
+    join products p on o.product_id = p.product_id
+    group by p.category, p.product_name
+)
+select 
+    category,
+    product_name,
+    product_sales,
+    sum(product_sales) over (partition by category) as category_total,
+    round(
+        product_sales * 100.0 / sum(product_sales) over (partition by category), 
+        2
+    ) as pct_of_category
+from asd;
+
+with asd as (
+    select customers.customer_id, customer_name, order_date,
+    max(order_date) over(partition by customers.customer_id) as najnovsi
+    from orders join customers on customers.customer_id=orders.customer_id  
+),
+qwe as (
+    select customer_id, customer_name, order_date,najnovsi,
+    max(order_date) over() as referecny
+    from asd
+)
+select customer_id, customer_name, najnovsi
+from qwe
+where najnovsi < referecny - INTERVAL'90 days' 
+order by referecny  asc
